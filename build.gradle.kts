@@ -13,6 +13,7 @@ dependencies {
     implementation("org.openjfx:javafx-fxml:17.0.2")
     implementation("org.openjfx:javafx-graphics:17.0.2")
     implementation("org.openjfx:javafx-base:17.0.2")
+    implementation("io.github.oshai:kotlin-logging-jvm:7.0.0")
 }
 
 tasks.test {
