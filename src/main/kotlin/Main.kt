@@ -2,7 +2,6 @@ package vision
 
 import data.Point
 import javafx.application.Application
-import javafx.collections.transformation.SortedList
 import javafx.event.EventHandler
 import javafx.scene.Scene
 import javafx.scene.canvas.Canvas
@@ -16,7 +15,6 @@ import vision.data.PointMeta
 import vision.data.Segment
 import vision.data.Util
 import vision.dev.Logger
-import java.util.SortedSet
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -26,7 +24,11 @@ class Vision : Application() {
     private var position: Point = Point(Double.NaN,Double.NaN)
     val canvas = Canvas(500.0, 500.0)
     var room = Rectangle(100.0, 100.0, 300.0, 300.0)
-    var box = Rectangle(200.0, 200.0, 75.0, 75.0)
+    var boxes = arrayOf(
+        Rectangle(150.0, 150.0, 75.0, 75.0),
+        Rectangle(290.0, 260.0, 30.0, 75.0),
+    )
+
     val radius = 10.0
 
     override fun start(primaryStage: Stage) {
@@ -47,40 +49,43 @@ class Vision : Application() {
 
     fun render(point: Point, canvas: Canvas)
     {
+        position = point
         val diameter = radius * 2.0;
+        val animPos = Point(point.x + radius, point.y + radius);
         val gc = canvas.graphicsContext2D
+
+        gc.lineWidth = 2.0
         gc.clearRect(0.0, 0.0, canvas.getWidth(), canvas.getHeight());
 
-        val roomSegs = Util.processSegments(position, Util.rectangleToSegments(room))
-        val boxSegs = Util.processSegments(position, Util.rectangleToSegments(box))
-        val totalSegments = roomSegs + boxSegs
+        var totalSegments = Util.processSegments(animPos, Util.rectangleToSegments(room))
+        for(box in boxes) {
+            gc.strokeRect(box.x, box.y, box.width, box.height);
+            totalSegments = totalSegments + Util.processSegments(animPos, Util.rectangleToSegments(box))
+        }
 
-        drawTriPoints(calculateVisibility(position, totalSegments), gc)
-//            drawTriPoints(calculateVisibility(position, roomSegs), gc)
+        drawTriPoints(animPos, calculateVisibility(animPos, totalSegments), gc)
 
         gc.fill = Color.TRANSPARENT
         gc.stroke = Color.BLACK;
         gc.strokeRect(room.x, room.y, room.width, room.height);
-        gc.strokeRect(box.x, box.y, box.width, box.height);
 
         // Draw a circle at (x, y)
         gc.fill = Color.BLACK
-        gc.fillOval(point.x, point.y, diameter, diameter)
-        position = point
-        Logger.debug("render point(${point.x}, ${point.y})")
+        gc.fillOval(position.x, position.y, diameter, diameter)
+        Logger.debug("render point(${position.x}, ${position.y})")
     }
 
-    fun drawTriPoints(triPoints: List<List<Point>>, gc: GraphicsContext)
+    fun drawTriPoints(animPos: Point, triPoints: List<List<Point>>, gc: GraphicsContext)
     {
         for(tri in triPoints)
         {
             val p1 = tri.get(0);
             val p2 =  tri.get(1);
-            val p3 =  position;
-            gc.fill = Color.TRANSPARENT
+            val p3 =  animPos;
+            gc.fill = Color.LIGHTGOLDENRODYELLOW
             gc.stroke = Color.BLACK
-            gc.fillPolygon(doubleArrayOf(p1.x, p2.x, p3.x+radius), doubleArrayOf(p1.y, p2.y, p3.y+radius), 3)
-            gc.strokePolygon(doubleArrayOf(p1.x, p2.x, p3.x+radius), doubleArrayOf(p1.y, p2.y, p3.y+radius), 3)
+            gc.fillPolygon(doubleArrayOf(p1.x, p2.x, p3.x), doubleArrayOf(p1.y, p2.y, p3.y), 3)
+            gc.strokePolygon(doubleArrayOf(p1.x, p2.x, p3.x), doubleArrayOf(p1.y, p2.y, p3.y), 3)
         }
     }
 
@@ -118,8 +123,8 @@ class Vision : Application() {
         val A1 = leftOf(segmentA, interpolate(segmentB.p1, segmentB.p2, 0.01))
         val A2 = leftOf(segmentA, interpolate(segmentB.p2, segmentB.p1, 0.01))
         val A3 = leftOf(segmentA, origin)
-        val B1 = leftOf(segmentB, interpolate(segmentA.p1, segmentA.p2, 0.0001))
-        val B2 = leftOf(segmentB, interpolate(segmentA.p2, segmentA.p1, 0.0001))
+        val B1 = leftOf(segmentB, interpolate(segmentA.p1, segmentA.p2, 0.01))
+        val B2 = leftOf(segmentB, interpolate(segmentA.p2, segmentA.p1, 0.01))
         val B3 = leftOf(segmentB, origin)
 
         return when {
