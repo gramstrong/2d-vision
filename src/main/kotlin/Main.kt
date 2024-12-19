@@ -11,17 +11,14 @@ import javafx.scene.layout.Pane
 import javafx.scene.paint.Color
 import javafx.scene.shape.Rectangle
 import javafx.stage.Stage
-import vision.data.PointMeta
+import vision.data.SegmentPoint
 import vision.data.Segment
 import vision.data.Util
-import vision.dev.Logger
 import kotlin.math.cos
 import kotlin.math.sin
 
 
 class Vision : Application() {
-
-    private var position: Point = Point(Double.NaN,Double.NaN)
     val canvas = Canvas(500.0, 500.0)
     var room = Rectangle(100.0, 100.0, 300.0, 300.0)
     var boxes = arrayOf(
@@ -32,13 +29,8 @@ class Vision : Application() {
     val radius = 10.0
 
     override fun start(primaryStage: Stage) {
-
-        val gc = canvas.graphicsContext2D
-        gc.stroke = Color.BLACK
-        gc.lineWidth = 2.0
-
         canvas.onMouseMoved = EventHandler { event: MouseEvent ->
-            render(Point(event.x-radius, event.y-radius), canvas)
+            render(Point(event.x, event.y), canvas)
         }
 
         val root = Pane(canvas);
@@ -47,32 +39,41 @@ class Vision : Application() {
         primaryStage.show()
     }
 
-    fun render(point: Point, canvas: Canvas)
+    fun render(mousePosition: Point, canvas: Canvas)
     {
-        position = point
         val diameter = radius * 2.0;
-        val animPos = Point(point.x + radius, point.y + radius);
         val gc = canvas.graphicsContext2D
 
-        gc.lineWidth = 2.0
         gc.clearRect(0.0, 0.0, canvas.getWidth(), canvas.getHeight());
 
-        var totalSegments = Util.processSegments(animPos, Util.rectangleToSegments(room))
+        //Segments for the room
+        var totalSegments = Util.processSegments(mousePosition, Util.rectangleToSegments(room))
+
+        //Segments for each box
         for(box in boxes) {
-            gc.strokeRect(box.x, box.y, box.width, box.height);
-            totalSegments = totalSegments + Util.processSegments(animPos, Util.rectangleToSegments(box))
+            totalSegments = totalSegments + Util.processSegments(mousePosition, Util.rectangleToSegments(box))
         }
 
-        drawTriPoints(animPos, calculateVisibility(animPos, totalSegments), gc)
+        gc.lineWidth = 2.0
 
+        //Draw vision tris
+        drawTriPoints(mousePosition, calculateVisibility(mousePosition, totalSegments), gc)
+
+        //Draw the room
         gc.fill = Color.TRANSPARENT
         gc.stroke = Color.BLACK;
         gc.strokeRect(room.x, room.y, room.width, room.height);
 
-        // Draw a circle at (x, y)
+        //Draw each box
+        for(box in boxes)
+        {
+            gc.strokeRect(box.x, box.y, box.width, box.height);
+        }
+
+        // Drawing the "player". The edge of the drawing starts at the provided Point,
+        // so we subtract the radius in order to position the circle over the mouse position.
         gc.fill = Color.BLACK
-        gc.fillOval(position.x, position.y, diameter, diameter)
-        Logger.debug("render point(${position.x}, ${position.y})")
+        gc.fillOval(mousePosition.x-radius, mousePosition.y-radius, diameter, diameter)
     }
 
     fun drawTriPoints(animPos: Point, triPoints: List<List<Point>>, gc: GraphicsContext)
@@ -89,7 +90,7 @@ class Vision : Application() {
         }
     }
 
-    fun pointCompare(pointA: PointMeta, pointB: PointMeta): Int {
+    fun pointCompare(pointA: SegmentPoint, pointB: SegmentPoint): Int {
         return when {
             pointA.angle > pointB.angle -> 1
             pointA.angle < pointB.angle -> -1
@@ -99,7 +100,7 @@ class Vision : Application() {
         }
     }
 
-    fun getSortedEndpoints(segments: List<Segment>): List<PointMeta>
+    fun getSortedSegPoints(segments: List<Segment>): List<SegmentPoint>
     {
         val points = segments.flatMap{ listOf(it.p1, it.p2) }
         return points.sortedWith(this::pointCompare)
@@ -108,15 +109,15 @@ class Vision : Application() {
     fun segmentInFrontOf(segmentA: Segment, segmentB: Segment, origin: Point): Boolean {
 
         val leftOf: (Segment, Point) -> Boolean = { segment, point ->
-            val crossProduct = (segment.p2.point.x - segment.p1.point.x) * (point.y - segment.p1.point.y) -
-                    (segment.p2.point.y - segment.p1.point.y) * (point.x - segment.p1.point.x)
+            val crossProduct = (segment.p2.x - segment.p1.x) * (point.y - segment.p1.y) -
+                    (segment.p2.y - segment.p1.y) * (point.x - segment.p1.x)
             crossProduct < 0
         }
 
-        val interpolate: (PointMeta, PointMeta, Double) -> Point = { pointA, pointB, f ->
+        val interpolate: (SegmentPoint, SegmentPoint, Double) -> Point = { pointA, pointB, f ->
             Point(
-                pointA.point.x * (1 - f) + pointB.point.x * f,
-                pointA.point.y * (1 - f) + pointB.point.y * f
+                pointA.x * (1 - f) + pointB.x * f,
+                pointA.y * (1 - f) + pointB.y * f
             )
         }
 
@@ -141,27 +142,27 @@ class Vision : Application() {
         val output = mutableListOf<List<Point>>()
         var beginAngle = 0.0
 
-        val sortedEndpoints = getSortedEndpoints(endpoints);
+        val sortedSegPoints = getSortedSegPoints(endpoints);
 
         for (pass in 0..1) {
-            for (endpoint in sortedEndpoints) {
+            for (segPoint in sortedSegPoints) {
                 val openSegment = openSegments.firstOrNull()
 
-                if (endpoint.beginsSegment) {
+                if (segPoint.beginsSegment) {
                     var index = 0
                     var segment = openSegments.getOrNull(index)
-                    while (segment != null && segmentInFrontOf(endpoint.segment, segment, origin)) {
+                    while (segment != null && segmentInFrontOf(segPoint.segment, segment, origin)) {
                         index++
                         segment = openSegments.getOrNull(index)
                     }
 
                     if (segment == null) {
-                        openSegments.add(endpoint.segment)
+                        openSegments.add(segPoint.segment)
                     } else {
-                        openSegments.add(index, endpoint.segment)
+                        openSegments.add(index, segPoint.segment)
                     }
                 } else {
-                    val index = openSegments.indexOf(endpoint.segment)
+                    val index = openSegments.indexOf(segPoint.segment)
                     if (index >= 0) {
                         openSegments.removeAt(index)
                     }
@@ -169,10 +170,10 @@ class Vision : Application() {
 
                 if (openSegment != openSegments.firstOrNull()) {
                     if (pass == 1) {
-                        val trianglePoints = getTrianglePoints(origin, beginAngle, endpoint.angle, openSegment)
+                        val trianglePoints = getTrianglePoints(origin, beginAngle, segPoint.angle, openSegment)
                         output.add(trianglePoints)
                     }
-                    beginAngle = endpoint.angle
+                    beginAngle = segPoint.angle
                 }
             }
         }
@@ -187,10 +188,10 @@ class Vision : Application() {
         var p4 = Point(0.0, 0.0)
 
         if (segment != null) {
-            p3.x = segment.p1.point.x
-            p3.y = segment.p1.point.y
-            p4.x = segment.p2.point.x
-            p4.y = segment.p2.point.y
+            p3.x = segment.p1.x
+            p3.y = segment.p1.y
+            p4.x = segment.p2.x
+            p4.y = segment.p2.y
         } else {
             p3.x = origin.x + cos(angle1) * 200
             p3.y = origin.y + sin(angle1) * 200
