@@ -2,37 +2,41 @@ package vision.data
 
 import data.Point
 import javafx.scene.shape.Rectangle
-import vision.dev.Logger
 import kotlin.math.PI
 import kotlin.math.atan2
+
+private class Corners(val NW: Point, val SW: Point, val NE: Point, val SE: Point);
 
 class Util
 {
     companion object
     {
-        private fun getCorners(x: Double, y: Double, width: Double, height: Double): Array<Point>
+        /**
+         * @return A [Corners] object given the parameters of a rectangle.
+         */
+        private fun getCorners(x: Double, y: Double, width: Double, height: Double): Corners
         {
-            return arrayOf(
+            return Corners(
                 Point(x, y),
                 Point(x, y + height),
                 Point(x + width, y),
                 Point(x + width, y + height))
         }
 
-        private fun getRectangleSegments(corners: Array<Point>): List<Segment>
+        /**
+         * @return a list of [Segment] given a [Corners] object representing a rectangle.
+         */
+        private fun getRectangleSegments(corners: Corners): List<Segment>
         {
-            try {
-                assert(corners.size == 4)
-            } catch (e: Exception) {
-                Logger.error("Expected array of Points size 4")
+            val cornersToSegments = {NW: Point, SW: Point, NE: Point, SE: Point->
+                listOf(
+                    Segment(NW.x, NW.y, NE.x, NE.y),
+                    Segment(NW.x, NW.y, SW.x, SW.y),
+                    Segment(NE.x, NE.y, SE.x, SE.y),
+                    Segment(SW.x, SW.y, SE.x, SE.y))
             }
 
-            return listOf(
-                Segment(corners[0].x, corners[0].y, corners[2].x, corners[2].y),
-                Segment(corners[0].x, corners[0].y, corners[1].x, corners[1].y),
-                Segment(corners[2].x, corners[2].y, corners[3].x, corners[3].y),
-                Segment(corners[1].x, corners[1].y, corners[3].x, corners[3].y),
-            )
+            return cornersToSegments(corners.NW, corners.SW, corners.NE, corners.SE);
         }
 
         /**
@@ -50,10 +54,10 @@ class Util
         }
 
         /**
-         * Updates a segment's points with metadata related to a source point
+         * Updates a segment's points with metadata related to a source point.
          *
-         * @param source The source point
-         * @param segment The segment to update
+         * @param source The source point.
+         * @param segment The segment to update.
          */
         fun updatePointMeta(source: Point, segment: Segment)
         {
@@ -74,9 +78,65 @@ class Util
             segment.p2.beginsSegment = !segment.p1.beginsSegment;
         }
 
+        /**
+         * @return A list of [Segment]
+         * @param rectangle from which the segments should be derived.
+         */
         fun rectangleToSegments(rectangle: Rectangle): List<Segment>
         {
             return getRectangleSegments(getCorners(rectangle.x, rectangle.y, rectangle.width, rectangle.height))
+        }
+
+        /**
+         * Comparison function given two [SegmentPoint].
+         * Sorts based on metadata that is set by [Util.updatePointMeta]. This gives us a list of [SegmentPoint]s
+         * in clockwise order.
+         */
+        fun pointCompare(pointA: SegmentPoint, pointB: SegmentPoint): Int {
+            return when {
+                pointA.angle > pointB.angle -> 1
+                pointA.angle < pointB.angle -> -1
+                !pointA.beginsSegment && pointB.beginsSegment -> 1
+                pointA.beginsSegment && !pointB.beginsSegment -> -1
+                else -> 0
+            }
+        }
+
+        /**
+         * @return true if [segmentA] lies between [origin] and [segmentB], otherwise returns false.
+         * @param segmentA
+         * @param segmentB
+         * @param origin
+         */
+        fun segmentInFrontOf(segmentA: Segment, segmentB: Segment, origin: Point): Boolean {
+
+            val leftOf: (Segment, Point) -> Boolean = { segment, point ->
+                val crossProduct = (segment.p2.x - segment.p1.x) * (point.y - segment.p1.y) -
+                        (segment.p2.y - segment.p1.y) * (point.x - segment.p1.x)
+                crossProduct < 0
+            }
+
+            val interpolate: (SegmentPoint, SegmentPoint, Double) -> Point = { pointA, pointB, f ->
+                Point(
+                    pointA.x * (1 - f) + pointB.x * f,
+                    pointA.y * (1 - f) + pointB.y * f
+                )
+            }
+
+            val A1 = leftOf(segmentA, interpolate(segmentB.p1, segmentB.p2, 0.01))
+            val A2 = leftOf(segmentA, interpolate(segmentB.p2, segmentB.p1, 0.01))
+            val A3 = leftOf(segmentA, origin)
+            val B1 = leftOf(segmentB, interpolate(segmentA.p1, segmentA.p2, 0.01))
+            val B2 = leftOf(segmentB, interpolate(segmentA.p2, segmentA.p1, 0.01))
+            val B3 = leftOf(segmentB, origin)
+
+            return when {
+                B1 == B2 && B2 != B3 -> true
+                A1 == A2 && A2 == A3 -> true
+                A1 == A2 && A2 != A3 -> false
+                B1 == B2 && B2 == B3 -> false
+                else -> false
+            }
         }
     }
 }

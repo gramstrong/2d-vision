@@ -90,51 +90,10 @@ class Vision : Application() {
         }
     }
 
-    fun pointCompare(pointA: SegmentPoint, pointB: SegmentPoint): Int {
-        return when {
-            pointA.angle > pointB.angle -> 1
-            pointA.angle < pointB.angle -> -1
-            !pointA.beginsSegment && pointB.beginsSegment -> 1
-            pointA.beginsSegment && !pointB.beginsSegment -> -1
-            else -> 0
-        }
-    }
-
     fun getSortedSegPoints(segments: List<Segment>): List<SegmentPoint>
     {
         val points = segments.flatMap{ listOf(it.p1, it.p2) }
-        return points.sortedWith(this::pointCompare)
-    }
-
-    fun segmentInFrontOf(segmentA: Segment, segmentB: Segment, origin: Point): Boolean {
-
-        val leftOf: (Segment, Point) -> Boolean = { segment, point ->
-            val crossProduct = (segment.p2.x - segment.p1.x) * (point.y - segment.p1.y) -
-                    (segment.p2.y - segment.p1.y) * (point.x - segment.p1.x)
-            crossProduct < 0
-        }
-
-        val interpolate: (SegmentPoint, SegmentPoint, Double) -> Point = { pointA, pointB, f ->
-            Point(
-                pointA.x * (1 - f) + pointB.x * f,
-                pointA.y * (1 - f) + pointB.y * f
-            )
-        }
-
-        val A1 = leftOf(segmentA, interpolate(segmentB.p1, segmentB.p2, 0.01))
-        val A2 = leftOf(segmentA, interpolate(segmentB.p2, segmentB.p1, 0.01))
-        val A3 = leftOf(segmentA, origin)
-        val B1 = leftOf(segmentB, interpolate(segmentA.p1, segmentA.p2, 0.01))
-        val B2 = leftOf(segmentB, interpolate(segmentA.p2, segmentA.p1, 0.01))
-        val B3 = leftOf(segmentB, origin)
-
-        return when {
-            B1 == B2 && B2 != B3 -> true
-            A1 == A2 && A2 == A3 -> true
-            A1 == A2 && A2 != A3 -> false
-            B1 == B2 && B2 == B3 -> false
-            else -> false
-        }
+        return points.sortedWith(Util::pointCompare)
     }
 
     fun calculateVisibility(origin: Point, endpoints: List<Segment>): List<List<Point>> {
@@ -151,7 +110,7 @@ class Vision : Application() {
                 if (segPoint.beginsSegment) {
                     var index = 0
                     var segment = openSegments.getOrNull(index)
-                    while (segment != null && segmentInFrontOf(segPoint.segment, segment, origin)) {
+                    while (segment != null && Util.segmentInFrontOf(segPoint.segment, segment, origin)) {
                         index++
                         segment = openSegments.getOrNull(index)
                     }
